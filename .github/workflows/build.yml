@@ -54,6 +54,9 @@ jobs:
       - name: Clean
         run: ./gradlew clean
 
+      - name: Test Java input and policy logic
+        run: ./gradlew testDebugUnitTest
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
         env:

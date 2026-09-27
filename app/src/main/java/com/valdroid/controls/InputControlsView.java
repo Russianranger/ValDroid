@@ -194,7 +194,9 @@ public class InputControlsView extends View {
             if (!controlElement.isVisible()) continue;
             controlElement.draw(canvas);
         }
-        if (!isEditMode && !mouseLocked && curX >= 0 && (physicalMouse || hasMouseElement())) drawCursor(canvas);
+        if (!isEditMode && !mouseLocked && curX >= 0
+                && (physicalMouse || (controllerConnected && controllerMouse) || hasMouseElement()))
+            drawCursor(canvas);
     }
 
     @Override
@@ -427,6 +429,7 @@ public class InputControlsView extends View {
      * keyboard/mouse elements stay on screen (Zomdroid's MNK mode); ALL again when it goes.
      */
     public void setGamepadConnected(boolean connected) {
+        controllerConnected = connected;
         applyInputMode(connected ? InputMode.MNK : InputMode.ALL);
     }
 
@@ -614,6 +617,15 @@ public class InputControlsView extends View {
     public boolean isMouseLocked() { return mouseLocked; }
 
     private boolean physicalMouse;
+    private boolean controllerConnected;
+    private boolean controllerMouse;
+
+    /** Physical-controller profiles can need a cursor even when every touch control is gamepad. */
+    public void setControllerMouse(boolean enabled) {
+        if (enabled == controllerMouse) return;
+        controllerMouse = enabled;
+        invalidate();
+    }
 
     /** A physical mouse is connected: draw the arrow even when the layout has no mouse element
      *  (the default gamepad layout has none, and without it the pointer moved invisibly). */

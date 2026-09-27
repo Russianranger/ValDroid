@@ -92,6 +92,31 @@ Valheim officially ships for x86_64 only. ValDroid runs the **native Linux build
 C# code runs on a native ARM64 build of Unity's Mono, graphics go to your phone's real GPU, and
 Android touch and gamepad input is injected straight into the game.
 
+## Physical controller mapping (this fork)
+
+Open **Settings → Gamepad mapping** before launching the game. Select **Gamepad** or
+**Mouse / keyboard** as a starting layout, then edit individual outputs and save. Mappings apply
+app-wide and are loaded when the game starts or resumes.
+
+- Buttons, triggers, stick clicks and each D-pad direction can send a gamepad action, keyboard
+  key, mouse click, wheel scroll, mouse movement, or no input.
+- Each stick can drive either virtual gamepad stick, move the mouse cursor (mouse look when the
+  game captures the pointer), use four custom direction bindings, or be disabled.
+- Changing one binding replaces its previous action. There is no additional physical-controller
+  passthrough behind a keyboard/mouse binding. Mixing gamepad and keyboard/mouse outputs is
+  available by explicitly choosing both kinds in the same layout.
+- Existing physical button calibration is retained. Use the calibration section only to correct
+  swapped or unusual controller buttons; select actual game outputs in the rows above it.
+- Touchscreen layouts are still edited separately. The mouse/keyboard starting layout emits no
+  gamepad events from the physical controller; touching gamepad controls can still send them.
+
+For an on-device check, map **A → E**, **B → Disabled**, **D-pad up → 1**, left stick to custom
+**W/A/S/D**, and right stick to **Mouse cursor / look**. Save and relaunch. Check that A sends only E,
+B does nothing, D-pad up sends only 1, and the sticks move and look as selected. Then test the
+gamepad starting layout, trigger travel, and diagonal D-pad input. While holding an input,
+background the app or disconnect the controller: its held output should release. If two buttons
+share an output, releasing one should keep it held until the other is released.
+
 ## Build
 
 - Android Studio (its bundled JBR), Android SDK and NDK

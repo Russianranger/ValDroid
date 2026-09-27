@@ -36,6 +36,7 @@ public enum Binding {
     GAMEPAD_BUTTON_RB(Kind.GP_BUTTON, VirtualGamepad.BTN_TR, 0, null, "Gamepad RB"),
     GAMEPAD_BUTTON_BACK(Kind.GP_BUTTON, VirtualGamepad.BTN_SELECT, 0, null, "Gamepad Back"),
     GAMEPAD_BUTTON_START(Kind.GP_BUTTON, VirtualGamepad.BTN_START, 0, null, "Gamepad Start"),
+    GAMEPAD_BUTTON_GUIDE(Kind.GP_BUTTON, VirtualGamepad.BTN_MODE, 0, null, "Gamepad Guide"),
     GAMEPAD_BUTTON_LSTICK(Kind.GP_BUTTON, VirtualGamepad.BTN_THUMBL, 0, null, "Gamepad L3 (stick click)"),
     GAMEPAD_BUTTON_RSTICK(Kind.GP_BUTTON, VirtualGamepad.BTN_THUMBR, 0, null, "Gamepad R3 (stick click)"),
     GAMEPAD_LTRIGGER(Kind.GP_TRIGGER, VirtualGamepad.ABS_Z, 0, null, "Gamepad LT"),
@@ -53,8 +54,14 @@ public enum Binding {
     MOUSE_RIGHT(Kind.MOUSE, 3, 0, null, "Right click"),
 
     // --- Mouse wheel ---
-    SCROLL_UP(Kind.SCROLL, 1, 0, null, "Zoom in"),
-    SCROLL_DOWN(Kind.SCROLL, -1, 0, null, "Zoom out"),
+    SCROLL_UP(Kind.SCROLL, 1, 0, null, "Mouse wheel up"),
+    SCROLL_DOWN(Kind.SCROLL, -1, 0, null, "Mouse wheel down"),
+
+    // Continuous movement while a physical control is held; handled by GamepadRouter.
+    MOUSE_MOVE_UP(Kind.MOUSE_MOVE, 0, 0, null, "Mouse cursor up"),
+    MOUSE_MOVE_RIGHT(Kind.MOUSE_MOVE, 1, 0, null, "Mouse cursor right"),
+    MOUSE_MOVE_DOWN(Kind.MOUSE_MOVE, 2, 0, null, "Mouse cursor down"),
+    MOUSE_MOVE_LEFT(Kind.MOUSE_MOVE, 3, 0, null, "Mouse cursor left"),
 
     // --- Arrow keys (RimWorld camera) ---
     KEY_UP(Kind.KEY, 82, 0x40000052, null, "Arrow Up"),
@@ -69,6 +76,11 @@ public enum Binding {
     KEY_TAB(Kind.KEY, 43, 9, null, "Tab"),
     KEY_BACKSPACE(Kind.KEY, 42, 8, null, "Backspace"),
     KEY_DELETE(Kind.KEY, 76, 127, null, "Delete"),
+    KEY_INSERT(Kind.KEY, 73, 0x40000049, null, "Insert"),
+    KEY_HOME(Kind.KEY, 74, 0x4000004A, null, "Home"),
+    KEY_END(Kind.KEY, 77, 0x4000004D, null, "End"),
+    KEY_PAGE_UP(Kind.KEY, 75, 0x4000004B, null, "Page Up"),
+    KEY_PAGE_DOWN(Kind.KEY, 78, 0x4000004E, null, "Page Down"),
 
     // --- Function keys (scancode SDL_SCANCODE_F1..F12 = 58..69; keycode = scancode | 0x40000000) ---
     KEY_F1(Kind.KEY, 58, 0x4000003A, null, "F1"),
@@ -126,8 +138,17 @@ public enum Binding {
 
     // --- Punctuation: RimWorld colonist cycling (, = previous, . = next) ---
     // SDL_SCANCODE_COMMA=54, PERIOD=55; keysym = ASCII.
-    KEY_COMMA(Kind.KEY, 54, 44, ",", "Comma (prev colonist)"),
-    KEY_PERIOD(Kind.KEY, 55, 46, ".", "Period (next colonist)"),
+    KEY_COMMA(Kind.KEY, 54, 44, ",", "Comma"),
+    KEY_PERIOD(Kind.KEY, 55, 46, ".", "Period"),
+    KEY_MINUS(Kind.KEY, 45, 45, "-", "Minus"),
+    KEY_EQUALS(Kind.KEY, 46, 61, "=", "Equals"),
+    KEY_LEFT_BRACKET(Kind.KEY, 47, 91, "[", "Left bracket"),
+    KEY_RIGHT_BRACKET(Kind.KEY, 48, 93, "]", "Right bracket"),
+    KEY_BACKSLASH(Kind.KEY, 49, 92, "\\", "Backslash"),
+    KEY_SEMICOLON(Kind.KEY, 51, 59, ";", "Semicolon"),
+    KEY_APOSTROPHE(Kind.KEY, 52, 39, "'", "Apostrophe"),
+    KEY_GRAVE(Kind.KEY, 53, 96, "`", "Backtick"),
+    KEY_SLASH(Kind.KEY, 56, 47, "/", "Slash"),
 
     // --- Modifiers: held while clicking (Shift = queue orders / multi-select in RimWorld) ---
     // SDL_SCANCODE_LSHIFT=225, SDLK_LSHIFT=225|0x40000000. No text (modifier).
@@ -136,9 +157,11 @@ public enum Binding {
     // RSHIFT=229; SDLK = scancode|0x40000000. No text (modifiers).
     KEY_LCTRL(Kind.KEY, 224, 0x400000E0, null, "Left Ctrl"),
     KEY_LALT(Kind.KEY, 226, 0x400000E2, null, "Left Alt"),
-    KEY_RSHIFT(Kind.KEY, 229, 0x400000E5, null, "Right Shift");
+    KEY_RSHIFT(Kind.KEY, 229, 0x400000E5, null, "Right Shift"),
+    KEY_RCTRL(Kind.KEY, 228, 0x400000E4, null, "Right Ctrl"),
+    KEY_RALT(Kind.KEY, 230, 0x400000E6, null, "Right Alt");
 
-    public enum Kind { NONE, MOUSE, SCROLL, KEY, SPECIAL, GP_BUTTON, GP_TRIGGER, GP_DPAD, GP_STICK }
+    public enum Kind { NONE, MOUSE, SCROLL, MOUSE_MOVE, KEY, SPECIAL, GP_BUTTON, GP_TRIGGER, GP_DPAD, GP_STICK }
 
     public final Kind kind;
     public final int code;      // MOUSE: button#, SCROLL: dy, KEY: scancode

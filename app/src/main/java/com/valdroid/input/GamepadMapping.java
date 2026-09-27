@@ -7,11 +7,9 @@ import android.view.KeyEvent;
 /**
  * Physical→logical gamepad button mapping (ported from Zomdroid's GamepadManager idea, simplified).
  *
- * RimWorld is mouse+keyboard, so {@link GamepadHandler} maps LOGICAL buttons (A/B/X/Y/…) to fixed
- * MNK actions (A=left click, etc.). This class sits in front of that: it maps each PHYSICAL Android
- * keycode to a logical button index, so a controller with swapped/“inverted” buttons can be fixed
- * without touching the action layer — the user just records which physical button should be each
- * logical one (see {@code GamepadMapperActivity}).
+ * This is the calibration layer: it maps each physical Android keycode to a named controller
+ * input, so swapped buttons can be corrected. {@link GamepadProfile} separately selects the
+ * output for that input (gamepad, keyboard or mouse); calibration never injects an action.
  *
  * Default is identity (logical A = KEYCODE_BUTTON_A, …). A custom mapping is stored as a CSV of
  * Android keycodes (index = logical button) in SharedPreferences.
@@ -54,13 +52,17 @@ public final class GamepadMapping {
         current = parseOrDefault(csv);
     }
 
-    private static int[] parseOrDefault(String csv) {
+    static int[] parseOrDefault(String csv) {
         if (csv == null || csv.isEmpty()) return DEFAULT.clone();
         String[] parts = csv.split(",");
         if (parts.length != COUNT) return DEFAULT.clone();
         int[] m = new int[COUNT];
         try {
-            for (int i = 0; i < COUNT; i++) m[i] = Integer.parseInt(parts[i].trim());
+            for (int i = 0; i < COUNT; i++) {
+                m[i] = Integer.parseInt(parts[i].trim());
+                if (!isCalibrationKey(m[i])) return DEFAULT.clone();
+                for (int j = 0; j < i; j++) if (m[j] == m[i]) return DEFAULT.clone();
+            }
         } catch (NumberFormatException e) {
             return DEFAULT.clone();
         }
@@ -76,16 +78,27 @@ public final class GamepadMapping {
         return DEFAULT.clone();
     }
 
+    /** Hats/triggers also arrive as axes; calibrating their key aliases would fire two rows. */
+    public static boolean isCalibrationKey(int code) {
+        return code > KeyEvent.KEYCODE_UNKNOWN && code != KeyEvent.KEYCODE_BUTTON_L2
+                && code != KeyEvent.KEYCODE_BUTTON_R2 && code != KeyEvent.KEYCODE_DPAD_UP
+                && code != KeyEvent.KEYCODE_DPAD_RIGHT && code != KeyEvent.KEYCODE_DPAD_DOWN
+                && code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_CENTER;
+    }
+
     /** Persist + apply a custom mapping (logical index → physical keycode). */
     public static void save(Context ctx, int[] mapping) {
         if (mapping == null || mapping.length != COUNT) return;
-        current = mapping.clone();
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < COUNT; i++) {
             if (i > 0) sb.append(',');
             sb.append(mapping[i]);
         }
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_MAPPING, sb.toString()).apply();
+        String csv = sb.toString();
+        int[] validated = parseOrDefault(csv);
+        if (!java.util.Arrays.equals(validated, mapping)) return;
+        current = validated;
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_MAPPING, csv).apply();
     }
 
     /** Reset to the identity default. */
