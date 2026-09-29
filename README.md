@@ -167,6 +167,29 @@ Host checks: `app/src/test/native/valdroid_pad_test.c` covers evdev transport,
 and launcher mapping against real SDL2 virtual joysticks (requires a C compiler and libSDL2 2.0.14+).
 These checks do not substitute for testing Valheim on the device.
 
+`0.1.5-single-controller` addresses the duplicate devices demonstrated by the 06:54 device log.
+Unity registered the mapped ValDroid pad as device 3 and two physical Xbox interfaces as devices
+4 and 5. Device 4 duplicated button presses with a different layout: X also reported Y, Y reported
+LB, LB reported Select, RB reported Start, and LT reported RT. The virtual pad reported the intended
+buttons. `SDL_JOYSTICK_DEVICE` adds a device; it does not stop SDL from discovering others.
+
+The guest ioctl boundary now rejects direct physical evdev/legacy-joystick controller probes by
+capabilities while preserving the virtual pad. This also covers controllers opened with openat or
+through a symlink, and both libc and direct ioctl syscalls. Keyboard, mouse and touch capabilities
+are not filtered. The launcher disables SDL's alternative HIDAPI controller backend. Android still
+reads physical controls and applies the saved profile; the game sees only the resulting virtual pad.
+The advanced environment override `VALDROID_VIRTUAL_GAMEPAD_ONLY=0` disables the evdev/js guard for
+comparison. `pad: blocked direct guest controller` lines identify filtered devices.
+
+The host regression `python3 app/src/test/native/sdl_device_filter_test.py` uses actual SDL2
+discovery with a virtual pad and two simulated physical interfaces, all sharing a VID/PID. It
+reproduces three visible gamepads without the fix and exactly the virtual path with it. This test
+and the SDL mapping test now run in CI alongside native isolation and transport checks.
+
+Device verification: keep the saved Gamepad profile, enter a world, test X/Y and LB/RB/Start/Select,
+then check a custom keyboard binding and a Disabled button. Export logs to confirm Unity reports
+only the mapped pad and that no direct-controller input escapes a remap or Disabled binding.
+
 ## Build
 
 - Android Studio (its bundled JBR), Android SDK and NDK

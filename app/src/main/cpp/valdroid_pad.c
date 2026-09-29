@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include "valdroid_input_filter.h"
 
 #ifdef VD_PAD_TEST
 #include <stdio.h>
@@ -188,6 +189,47 @@ int rd_pad_is_fd(int fd) {
     int found = client_for_fd(fd) != NULL;
     pthread_mutex_unlock(&g_mx);
     return found;
+}
+
+static int physical_input_query(int fd, unsigned long request, void* data) {
+    return ioctl(fd, request, data); // native host ioctl, NOT the guest's my_ioctl wrapper
+}
+
+/** Called only by guest ioctl wrappers, after the virtual fd check. Android continues reading
+ * the actual controller and routes it through GamepadHandler. Reject all probing of a physical
+ * controller so SDL can't reopen it through another path (openat, symlink, legacy js interface).
+ * Real keyboards, mice, touchscreens and unrelated devices retain their existing behavior.
+ */
+int rd_pad_block_guest_controller_ioctl(int fd, unsigned long request) {
+    unsigned type = (request >> 8) & 0xff;
+    if (type != 'E' && type != 'j') return 0;
+    const char* exclusive = getenv("VALDROID_VIRTUAL_GAMEPAD_ONLY");
+    if (!exclusive || strcmp(exclusive, "1")) return 0;
+    int saved_errno = errno;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISCHR(st.st_mode)
+        || !vd_input_is_physical_controller(fd, request, physical_input_query)) {
+        errno = saved_errno;
+        return 0;
+    }
+    // Log once per physical device, not once per failed ioctl. Bound the diagnostic storage.
+    static dev_t logged[32];
+    static unsigned logged_count;
+    pthread_mutex_lock(&g_mx);
+    unsigned i = 0;
+    while (i < logged_count && logged[i] != st.st_rdev) i++;
+    if (i == logged_count && logged_count < sizeof(logged) / sizeof(logged[0])) {
+        logged[logged_count++] = st.st_rdev;
+        char name[128] = {0};
+        unsigned nr = type == 'j' ? 0x13 : 0x06;
+        if (ioctl(fd, _IOC(_IOC_READ, type, nr, sizeof(name)), name) < 0) strcpy(name, "unknown");
+        name[sizeof(name) - 1] = 0;
+        LOGI("pad: blocked direct guest controller fd=%d rdev=%llu name=%s; Android mapper owns input",
+             fd, (unsigned long long)st.st_rdev, name);
+    }
+    pthread_mutex_unlock(&g_mx);
+    errno = ENODEV;
+    return 1;
 }
 
 /** evdev reads return whole records, leave unread records queued, and recover after a load stall. */

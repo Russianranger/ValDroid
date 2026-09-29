@@ -118,6 +118,8 @@ public class GameLauncher {
                     : (s.isModSupport() ? "off (needs native Mono)" : "off")) + "\n"
             + "controller UI : " + ("1".equals(Os.getenv("RIMDROID_CONTROLLER_UI")) ? "ON" : "off")
                 + " (physical gamepad at launch: " + (gamepadPresentAtLaunch ? "yes" : "no") + ")\n"
+            + "pad ownership : virtual-only=" + Os.getenv("VALDROID_VIRTUAL_GAMEPAD_ONLY")
+                + ", HIDAPI=" + Os.getenv("SDL_JOYSTICK_HIDAPI") + "\n"
             + "box64         : DYNAREC=" + (interp ? "0" : "1")
                 + " (box64 defaults + CALLRET=1" + (s.isCompatibilityMode() ? "; compat WEAKBARRIER=2 X87DOUBLE=1 MAXCPU=1" : "")
                 + "; Extra env overrides)\n"
@@ -827,6 +829,12 @@ public class GameLauncher {
         // Before custom env vars so VALDROID_INPUT_TRACE=0 can disable it for an A/B test.
         Os.setenv("VALDROID_INPUT_TRACE", BuildConfig.DEBUG ? "1" : "0", true);
         Os.setenv("SDL_GAMECONTROLLERCONFIG", com.valdroid.input.VirtualGamepad.SDL_MAPPING, true);
+        // SDL_JOYSTICK_DEVICE adds our pad; it does NOT restrict SDL to that device. Direct
+        // physical discovery bypasses every remap and generated duplicate/wrong GPAD actions.
+        // The native guest ioctl guard filters real evdev/js controllers by capabilities.
+        // Disable the alternate HIDAPI backend as well, so it cannot bypass that guard.
+        Os.setenv("VALDROID_VIRTUAL_GAMEPAD_ONLY", "1", true);
+        Os.setenv("SDL_JOYSTICK_HIDAPI", "0", true);
 
         // Native ARM64 Mono (experimental per-instance switch, 1.6 only). Set OR unset every launch:
         // setenv persists in this process, so a stale path must not leak into the next instance. It
@@ -1010,6 +1018,8 @@ public class GameLauncher {
             // reports an Xbox 360 pad, so the game runs with its own controller UI and bindings.
             Os.setenv("SDL_JOYSTICK_DEVICE", com.valdroid.input.VirtualGamepad.DEVICE_PATH, true);
             postLog("Virtual controller SDL mapping: " + Os.getenv("SDL_GAMECONTROLLERCONFIG"));
+            postLog("Controller ownership: virtual-only=" + Os.getenv("VALDROID_VIRTUAL_GAMEPAD_ONLY")
+                    + " HIDAPI=" + Os.getenv("SDL_JOYSTICK_HIDAPI"));
             postLog("Unity input trace: " + Os.getenv("VALDROID_INPUT_TRACE")
                     + " (requires native Mono; [VD-INPUT] in box64.log)");
             // Force SDL to use our root visual by id (bypasses XMatchVisualInfo, which was failing to
