@@ -47,6 +47,8 @@ static void* rd_native_sym(const char* name)
     return (my_lib && my_lib->w.lib) ? dlsym(my_lib->w.lib, name) : NULL;
 }
 
+#include "rd_mono_input_trace.h"
+
 /*
  * GC roots held by x86 guest threads (P3, extended to every thread).
  *
@@ -596,6 +598,7 @@ static void* rd_finish_invoke(x64emu_t* emu, void* ret, void* exception)
 
 EXPORT void* my_mono_runtime_invoke(x64emu_t* emu, void* method, void* obj, void* params, void** exc)
 {
+    rd_input_trace_invoke(method, params);
     uint64_t stats_t0 = rd_stats_invoke_enter();
     void* exception = NULL;
     void* ret = my->mono_runtime_invoke(method, obj, params, exc ? exc : &exception);
@@ -1021,6 +1024,7 @@ EXPORT void* my_mono_jit_init_version(x64emu_t* emu, const char* domain_name, co
         domain_name ? domain_name : "(null)", runtime_version ? runtime_version : "(null)");
     void* domain = my->mono_jit_init_version((void*)domain_name, (void*)runtime_version);
     if (domain) {
+        rd_input_trace_init();
         rd_set_pending_exception = rd_native_sym("mono_runtime_set_pending_exception");
         if (!rd_set_pending_exception)
             printf_log(LOG_NONE, "[RD-MONO] mono_runtime_set_pending_exception missing: exceptions from x86 internal calls will corrupt the guest\n");

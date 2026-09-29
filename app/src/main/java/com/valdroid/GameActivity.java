@@ -34,11 +34,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     public static native long nativeGetFrameCount();
     public static native void nativeSetFpsCap(int fps);   // 0 = uncapped, else cap presents to fps
 
-    // Input wrappers: the native path feeds synthetic SDL events (RimWorld 1.5's SDL video
-    // driver). Under the 1.6 X11 path Unity's SDL takes input from CORE X EVENTS instead, so
-    // taps produced zero ButtonPress on the wire and nothing was clickable at the menu. Mirror
-    // every pointer action into the in-process X server whenever one is running (1.6 sessions
-    // only — getXServer() is null for 1.5, making the mirror a no-op there).
+    // Compatibility input wrappers select one backend. Valheim reads X events; the native SDL
+    // queue is a fallback for sessions without X. Never enqueue the same action in both.
     private static com.valdroid.xserver.Pointer.Button xBtn(int button) {
         switch (button) {
             case 2:  return com.valdroid.xserver.Pointer.Button.BUTTON_MIDDLE;
@@ -47,17 +44,21 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
     public static void touchInput(int action, int x, int y) {
-        try { nativeTouch(action, x, y); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeTouch(action, x, y); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         xs.injectPointerMove(x, y);
         if (action == 1) xs.injectPointerButtonPress(com.valdroid.xserver.Pointer.Button.BUTTON_LEFT);
         else if (action == 2) xs.injectPointerButtonRelease(com.valdroid.xserver.Pointer.Button.BUTTON_LEFT);
     }
     public static void buttonInput(int button, int down, int x, int y) {
-        try { nativeButton(button, down, x, y); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeButton(button, down, x, y); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         xs.injectPointerMove(x, y);
         if (down != 0) xs.injectPointerButtonPress(xBtn(button));
         else xs.injectPointerButtonRelease(xBtn(button));
@@ -105,10 +106,21 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             case 42: return com.valdroid.xserver.XKeycode.KEY_BKSP;
             case 54: return com.valdroid.xserver.XKeycode.KEY_COMMA;
             case 55: return com.valdroid.xserver.XKeycode.KEY_PERIOD;
+            case 45: return com.valdroid.xserver.XKeycode.KEY_MINUS;
+            case 46: return com.valdroid.xserver.XKeycode.KEY_EQUAL;
+            case 47: return com.valdroid.xserver.XKeycode.KEY_BRACKET_LEFT;
+            case 48: return com.valdroid.xserver.XKeycode.KEY_BRACKET_RIGHT;
+            case 49: return com.valdroid.xserver.XKeycode.KEY_BACKSLASH;
+            case 51: return com.valdroid.xserver.XKeycode.KEY_SEMICOLON;
+            case 52: return com.valdroid.xserver.XKeycode.KEY_APOSTROPHE;
+            case 53: return com.valdroid.xserver.XKeycode.KEY_GRAVE;
+            case 56: return com.valdroid.xserver.XKeycode.KEY_SLASH;
             case 225: return com.valdroid.xserver.XKeycode.KEY_SHIFT_L;
             case 229: return com.valdroid.xserver.XKeycode.KEY_SHIFT_R;
             case 224: return com.valdroid.xserver.XKeycode.KEY_CTRL_L;
             case 226: return com.valdroid.xserver.XKeycode.KEY_ALT_L;
+            case 228: return com.valdroid.xserver.XKeycode.KEY_CTRL_R;
+            case 230: return com.valdroid.xserver.XKeycode.KEY_ALT_R;
             case 30: return com.valdroid.xserver.XKeycode.KEY_1;
             case 31: return com.valdroid.xserver.XKeycode.KEY_2;
             case 32: return com.valdroid.xserver.XKeycode.KEY_3;
@@ -138,15 +150,20 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             case 68: return com.valdroid.xserver.XKeycode.KEY_F11;
             case 69: return com.valdroid.xserver.XKeycode.KEY_F12;
             case 74: return com.valdroid.xserver.XKeycode.KEY_HOME;
+            case 73: return com.valdroid.xserver.XKeycode.KEY_INSERT;
+            case 75: return com.valdroid.xserver.XKeycode.KEY_PRIOR;
+            case 78: return com.valdroid.xserver.XKeycode.KEY_NEXT;
             case 77: return com.valdroid.xserver.XKeycode.KEY_END;
             case 76: return com.valdroid.xserver.XKeycode.KEY_DEL;
             default: return null;
         }
     }
     public static void keyInput(int scancode, int keycode, int down) {
-        try { nativeKey(scancode, keycode, down); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeKey(scancode, keycode, down); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         com.valdroid.xserver.XKeycode xk = xKey(scancode);
         if (xk == null) return;
         // TEXT-INPUT EXPERIMENT (2026-07-23): carry the real keysym on the X11 KeyPress (was 0), so
@@ -226,9 +243,11 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     public static void scrollInput(int x, int y, int dy) {
-        try { nativeScroll(x, y, dy); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeScroll(x, y, dy); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         xs.injectPointerMove(x, y);
         com.valdroid.xserver.Pointer.Button b = dy > 0
                 ? com.valdroid.xserver.Pointer.Button.BUTTON_SCROLL_UP
@@ -263,7 +282,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     private PerfSampler perfSampler;                   // its numbers — sampled off the UI thread
     private android.os.HandlerThread perfThread;
     private android.os.Handler perfHandler;
-    private com.valdroid.input.GamepadHandler gamepad;   // physical controller -> MNK injection
+    private com.valdroid.input.GamepadHandler gamepad;   // physical controller -> configured outputs
+    private boolean gameActivityResumed;
     private com.valdroid.input.MouseKeyboardHandler mouseKb;  // physical mouse + keyboard -> SDL injection
     private String instanceName;   // the launched instance (null for the smoke test)
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -512,10 +532,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
         setContentView(root);
         hideSystemBars();   // after setContentView — the decor view / insets controller now exist
-        // CRITICAL for gamepad: analog joystick MotionEvents (sticks/triggers) are delivered only to
-        // a focused View, then bubble to Activity.onGenericMotionEvent. Without a focusable+focused
-        // view, Android silently drops them (buttons still arrive via dispatchKeyEvent, but sticks
-        // don't). So make the game surface focusable and grab focus (re-grabbed in onResume).
+        // Keep the game surface focused for input and captured mouse motion. Controller motion is
+        // intercepted by dispatchGenericMotionEvent before Android can synthesize navigation keys.
         surfaceView.setFocusable(true);
         surfaceView.setOnCapturedPointerListener((v, ev) -> onCapturedMouse(ev));
         surfaceView.setFocusableInTouchMode(true);
@@ -536,6 +554,10 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemBars();   // re-hide after dialogs / focus regain
+        if (gamepad != null) {
+            if (hasFocus && gameActivityResumed) gamepad.start();
+            else gamepad.stop();
+        }
     }
 
     // Pinch-zoom: only non-stick touches reach here (overlay returns false for them).
@@ -727,7 +749,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             perfHandler.removeCallbacks(fpsTick);
             perfHandler.post(fpsTick);                  // first sample only primes the deltas
         }
-        if (gamepad != null) gamepad.start();         // resume the gamepad analog frame loop
+        gameActivityResumed = true;
+        if (gamepad != null && hasWindowFocus()) gamepad.start();
         // Auto-hide the on-screen controls while a physical gamepad is connected (like Zomdroid).
         inputManager = (android.hardware.input.InputManager) getSystemService(INPUT_SERVICE);
         if (inputManager != null) inputManager.registerInputDeviceListener(deviceListener, null);
@@ -801,6 +824,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     protected void onPause() {
+        gameActivityResumed = false;
         super.onPause();
         ui.removeCallbacks(fpsTextTick);               // no counting in background
         ui.removeCallbacks(mouseLockTick);
@@ -818,8 +842,14 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     private final android.hardware.input.InputManager.InputDeviceListener deviceListener =
         new android.hardware.input.InputManager.InputDeviceListener() {
             @Override public void onInputDeviceAdded(int id)   { refreshGamepadControls(); }
-            @Override public void onInputDeviceRemoved(int id) { refreshGamepadControls(); }
-            @Override public void onInputDeviceChanged(int id) { refreshGamepadControls(); }
+            @Override public void onInputDeviceRemoved(int id) {
+                if (gamepad != null) gamepad.onDeviceRemoved(id);
+                refreshGamepadControls();
+            }
+            @Override public void onInputDeviceChanged(int id) {
+                if (gamepad != null) gamepad.onDeviceRemoved(id);
+                refreshGamepadControls();
+            }
         };
 
     /** Hide the on-screen GAMEPAD elements when a physical gamepad connects (it feeds the same virtual
@@ -827,6 +857,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
      *  Acts only on a connect/disconnect TRANSITION, so it never clobbers the manual hide toggle. */
     private void refreshGamepadControls() {
         boolean pad = isGamepadConnected();
+        com.valdroid.input.VirtualGamepad.setPhysicalControllerConnected(pad);
         if (pad == lastPadConnected) return;
         lastPadConnected = pad;
         if (controls != null) controls.setGamepadConnected(pad);
@@ -837,16 +868,14 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // Physical gamepad: buttons/D-pad arrive as key events, analog sticks/triggers as generic
-    // motion. Route both to GamepadHandler (maps to the same MNK injection as on-screen controls);
+    // motion. Route both to GamepadHandler for their configured gamepad or mouse/keyboard output;
     // if it consumes the event, don't let the system treat it as focus/back navigation.
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        // Keyboard FIRST: a key with an SDL scancode (letters/space/digits/arrows) is injected as a key; only
-        // if it has no scancode does it fall through to the gamepad handler. This stops the gamepad handler
-        // (which swallows everything from a gamepad-ish source) from eating a combo keyboard+touchpad's keys.
-        // 1.6/X11: ALSO mirror the key into the in-process X server (Unity's SDL x11 driver only sees
-        // core X KeyPress/KeyRelease; the SDL injection below is invisible to it — same as pointer).
-        // Winlator's Keyboard.onKeyEvent carries the full Android→XKeycode map and was never wired.
+        // Controller buttons and D-pad must precede the keyboard: otherwise a remapped D-pad
+        // becomes an arrow key as well. The handler leaves real keyboard keys on combo devices alone.
+        if (gamepad != null && gamepad.onKey(event)) return true;
+        // Use the active backend: Unity's SDL x11 driver sees core X KeyPress/KeyRelease.
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
         if (xs != null) {
             // Back (the system back gesture / button, or a keyboard's Back key) is Esc in the game:
@@ -868,7 +897,6 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             try { handled = xs.keyboard.onKeyEvent(event); } catch (Throwable ignored) {}
             if (handled) return true;
         } else if (mouseKb != null && mouseKb.onKey(event)) return true;   // no X server (not Valheim)
-        if (gamepad != null && gamepad.onKey(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
@@ -879,8 +907,14 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     @Override
-    public boolean onGenericMotionEvent(MotionEvent event) {
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        // Consume joystick reports before focused Views or Android's fallback key synthesis.
         if (gamepad != null && gamepad.onMotion(event)) return true;
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
         if (mouseKb != null && mouseKb.onGenericMotion(event)) return true;   // mouse move/wheel/buttons
         return super.onGenericMotionEvent(event);
     }

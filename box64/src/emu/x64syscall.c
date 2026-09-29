@@ -55,6 +55,8 @@ extern int fchmodat (int __fd, const char *__file, mode_t __mode, int __flag);
 //int32_t my_getrandom(x64emu_t* emu, void* buf, uint32_t buflen, uint32_t flags);
 int of_convert(int flag);
 int32_t my_open(x64emu_t* emu, void* pathname, int32_t flags, uint32_t mode);
+ssize_t my_read(x64emu_t* emu, int fd, void* buf, size_t count);
+int my_ioctl(x64emu_t* emu, int fd, unsigned long req, void* arg);
 #ifdef PPC64LE
 unsigned long ioctl_convert(unsigned long x86_req);
 #endif
@@ -115,9 +117,7 @@ static const scwrap_t syscallwrap[] = {
     //[13] = {__NR_rt_sigaction, 4},   // wrapped to use my_ version
     [14] = {__NR_rt_sigprocmask, 4},
     [15] = {__NR_rt_sigreturn, 1},
-    #ifndef PPC64LE
-    [16] = {__NR_ioctl, 3},
-    #endif
+    // ioctl uses my_ioctl: virtual evdev state queries and PPC64LE request translation.
     [17] = {__NR_pread64, 4},
     [18] = {__NR_pwrite64, 4},
     [19] = {__NR_readv, 3},
@@ -590,7 +590,7 @@ void EXPORT x64Syscall_linux(x64emu_t *emu)
     }
     switch (s) {
         case 0:  // sys_read
-            S_RAX = read(S_EDI, (void*)R_RSI, (size_t)R_RDX);
+            S_RAX = my_read(emu, S_EDI, (void*)R_RSI, (size_t)R_RDX);
             if(S_RAX==-1)
                 S_RAX = -errno;
             break;
@@ -632,13 +632,11 @@ void EXPORT x64Syscall_linux(x64emu_t *emu)
             if(S_RAX==-1)
                 S_RAX = -errno;
             break;
-        #ifdef PPC64LE
-        case 16: // sys_ioctl (PPC64LE needs ioctl number translation)
-            S_RAX = ioctl(S_EDI, ioctl_convert(R_RSI), R_RDX);
+        case 16: // sys_ioctl: same virtual-device routing as the libc entry point
+            S_RAX = my_ioctl(emu, S_EDI, R_RSI, (void*)R_RDX);
             if(S_RAX==-1)
                 S_RAX = -errno;
             break;
-        #endif
         case 6: // sys_lstat
             S_RAX = my_lstat(emu, (void*)R_RDI, (void*)R_RSI);
             if(S_RAX==-1)
@@ -1083,7 +1081,9 @@ long EXPORT my_syscall(x64emu_t *emu)
     }
     switch (s) {
         case 0:  // sys_read
-            return read(R_ESI, (void*)R_RDX, R_ECX);
+            return my_read(emu, R_ESI, (void*)R_RDX, R_ECX);
+        case 16: // sys_ioctl
+            return my_ioctl(emu, R_ESI, R_RDX, (void*)R_RCX);
         case 1:  // sys_write
             return write(R_ESI, (void*)R_RDX, R_ECX);
         case 2: // sys_open

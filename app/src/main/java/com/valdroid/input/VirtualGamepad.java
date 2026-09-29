@@ -9,6 +9,16 @@ package com.valdroid.input;
 public final class VirtualGamepad {
     public static final String DEVICE_PATH = "/dev/input/event-valdroid";
 
+    // SDL numbers only advertised evdev buttons, in ascending code order. This is the compact
+    // USB xpad layout (11 buttons), not the sparse Bluetooth layout (15 slots). Pin our own GUID
+    // so the Unity-bundled SDL database cannot silently select a different controller layout.
+    public static final String SDL_MAPPING =
+            "030000005e0400008e02000014010000,ValDroid Xbox 360,"
+            + "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+            + "back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+            + "leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,"
+            + "dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,";
+
     // linux/input-event-codes.h
     public static final int BTN_A = 0x130, BTN_B = 0x131, BTN_X = 0x133, BTN_Y = 0x134;
     public static final int BTN_TL = 0x136, BTN_TR = 0x137;
@@ -23,25 +33,47 @@ public final class VirtualGamepad {
 
     private VirtualGamepad() {}
 
-    public static void button(int code, boolean down) { nativeButton(code, down); }
+    private static final GamepadOutputArbiter OUTPUT = new GamepadOutputArbiter(
+            new GamepadOutputArbiter.Sink() {
+                public void button(int code, boolean down) {
+                    try { nativeButton(code, down); } catch (UnsatisfiedLinkError ignored) { }
+                }
+                public void axis(int code, int value) {
+                    try { nativeAxis(code, value); } catch (UnsatisfiedLinkError ignored) { }
+                }
+                public void sync() {
+                    try { nativeSync(); } catch (UnsatisfiedLinkError ignored) { }
+                }
+            });
+
+    public static void setPhysicalControllerConnected(boolean connected) {
+        OUTPUT.setPhysicalConnected(connected);
+    }
+
+    // All existing InputSink/overlay calls belong to the touch source.
+    public static void button(int code, boolean down) { OUTPUT.button(false, code, down); }
 
     /** Raw evdev value in the axis's own range (see the constants above). */
-    public static void axis(int code, int value) { nativeAxis(code, value); }
+    public static void axis(int code, int value) { OUTPUT.axis(false, code, value); }
+
+    public static void physicalButton(int code, boolean down) { OUTPUT.button(true, code, down); }
+    public static void physicalAxis(int code, int value) { OUTPUT.axis(true, code, value); }
+    public static void syncPhysical() { OUTPUT.sync(true); }
 
     /** Stick axis from a -1..1 float. */
     public static void stick(int code, float v) {
         if (v > 1f) v = 1f; else if (v < -1f) v = -1f;
-        nativeAxis(code, Math.round(v * STICK_MAX));
+        axis(code, Math.round(v * STICK_MAX));
     }
 
     /** Trigger axis from a 0..1 float. */
     public static void trigger(int code, float v) {
         if (v > 1f) v = 1f; else if (v < 0f) v = 0f;
-        nativeAxis(code, Math.round(v * TRIGGER_MAX));
+        axis(code, Math.round(v * TRIGGER_MAX));
     }
 
     /** Flush pending changes as one SYN_REPORT-terminated packet. */
-    public static void sync() { nativeSync(); }
+    public static void sync() { OUTPUT.sync(false); }
 
     private static native void nativeButton(int code, boolean down);
     private static native void nativeAxis(int code, int value);

@@ -229,9 +229,13 @@ EXPORT int32_t my_ppoll(x64emu_t* emu, struct pollfd* fds, unsigned long nfds, v
     return ret;
 }
 
+extern __attribute__((weak)) int rd_pad_is_fd(int fd);
+extern __attribute__((weak)) ssize_t rd_pad_read(int fd, void* buf, size_t count);
+
 EXPORT ssize_t my_read(x64emu_t* emu, int fd, void* buf, size_t count)
 {
     (void)emu;
+    if(rd_pad_read && rd_pad_is_fd && rd_pad_is_fd(fd)) return rd_pad_read(fd, buf, count);
     int watch = rd_x11_trace_enabled() && rd_x11_is_fd(fd);
     ssize_t ret = read(fd, buf, count);
     int saved = errno;
@@ -1001,6 +1005,7 @@ extern __attribute__((weak)) const char* rd_pad_path(void);
 extern __attribute__((weak)) int rd_pad_open(int flags);
 extern __attribute__((weak)) int rd_pad_is_fd(int fd);
 extern __attribute__((weak)) int rd_pad_ioctl(int fd, unsigned long req, void* arg);
+extern __attribute__((weak)) int rd_pad_block_guest_controller_ioctl(int fd, unsigned long req);
 static int vd_is_pad_path(const char* p) { return p && rd_pad_path && !strcmp(p, rd_pad_path()); }
 static int vd_pad_is_fd(int fd) { return rd_pad_is_fd && rd_pad_is_fd(fd); }
 static int vd_pad_fake_stat(void* buf) {   // what SDL expects of /dev/input/eventN: a character device
@@ -1174,17 +1179,19 @@ unsigned long ioctl_convert(unsigned long x86_req)
 EXPORT int my_ioctl(x64emu_t* emu, int fd, unsigned long req, void* arg)
 {
     if(vd_pad_is_fd(fd)) return rd_pad_ioctl(fd, req, arg);
+    if(rd_pad_block_guest_controller_ioctl && rd_pad_block_guest_controller_ioctl(fd, req)) return -1;
     (void)emu;
     unsigned long native_req = ioctl_convert(req);
     return ioctl(fd, native_req, arg);
 }
 #endif
 #ifndef PPC64LE
-// ValDroid: ioctl is wrapped here only to serve the virtual gamepad; everything else passes through.
+// ValDroid: serve the mapped pad and prevent SDL from separately discovering physical controllers.
 EXPORT int my_ioctl(x64emu_t* emu, int fd, unsigned long req, void* arg)
 {
     (void)emu;
     if(vd_pad_is_fd(fd)) return rd_pad_ioctl(fd, req, arg);
+    if(rd_pad_block_guest_controller_ioctl && rd_pad_block_guest_controller_ioctl(fd, req)) return -1;
     return ioctl(fd, req, arg);
 }
 #endif

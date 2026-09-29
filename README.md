@@ -92,6 +92,104 @@ Valheim officially ships for x86_64 only. ValDroid runs the **native Linux build
 C# code runs on a native ARM64 build of Unity's Mono, graphics go to your phone's real GPU, and
 Android touch and gamepad input is injected straight into the game.
 
+## Physical controller mapping (this fork)
+
+Open **Settings → Gamepad mapping** before launching the game. Select **Gamepad** or
+**Mouse / keyboard** as a starting layout, then edit individual outputs and save. Mappings apply
+app-wide and are loaded when the game starts or resumes.
+
+- Buttons, triggers, stick clicks and each D-pad direction can send a gamepad action, keyboard
+  key, mouse click, wheel scroll, mouse movement, or no input.
+- Each stick can drive either virtual gamepad stick, move the mouse cursor (mouse look when the
+  game captures the pointer), use four custom direction bindings, or be disabled.
+- Changing one binding replaces its previous action. There is no additional physical-controller
+  passthrough behind a keyboard/mouse binding. Mixing gamepad and keyboard/mouse outputs is
+  available by explicitly choosing both kinds in the same layout.
+- Existing physical button calibration is retained. Use the calibration section only to correct
+  swapped or unusual controller buttons; select actual game outputs in the rows above it.
+- Touchscreen layouts are still edited separately. While a physical controller is connected it
+  exclusively owns the virtual gamepad; touch-gamepad writes are blocked, including hidden or
+  edited controls. Keyboard/mouse touch helpers remain available. Disconnecting the controller
+  restores touch-gamepad input and clears held virtual buttons and axes.
+- **Right stick axes** defaults to Automatic, which selects a complete centered Z/RZ or RX/RY
+  pair. If a controller advertises both but only one works, choose its pair explicitly and save.
+  Trigger aliases are read from one source per trigger; generic vendor axes are not guessed.
+
+For an on-device check, map **A → E**, **B → Disabled**, **D-pad up → 1**, left stick to custom
+**W/A/S/D**, and right stick to **Mouse cursor / look**. Save and relaunch. Check that A sends only E,
+B does nothing, D-pad up sends only 1, and the sticks move and look as selected. Then test the
+gamepad starting layout, trigger travel, and diagonal D-pad input. While holding an input,
+background the app or disconnect the controller: its held output should release. If two buttons
+share an output, releasing one should keep it held until the other is released.
+
+The controller builds also route controller motion before Android's focused-view
+handlers and suppresses stick jitter inside the device deadzone (at least 15%). For a double-input
+report, launch the game, test the affected controls immediately, then export logs. `ValDroid/Input`
+in `logcat.txt` records the saved profile, device ranges, selected stick/trigger axes, up to 512
+button edges and 64 motion samples per resume, and output counts on pause. Motion samples are limited to one every
+300 ms. These diagnostics distinguish controller mappings from a separate mouse/keyboard stream;
+ordinary physical mouse/keyboard support remains enabled.
+
+`0.1.3-button-test` fixes the native virtual-gamepad transport used after Java mapping. Each
+guest open gets its own event queue; a short read cannot discard other button edges; held-button
+queries return the actual state; and an overflowing queue resynchronizes to current buttons and
+axes after a loading stall. Reopening the device starts from current state rather than old taps.
+The `pad:` lines in `rimdroid.log` identify reader opens, delivered button edges, state queries and
+overflow recovery. Stick mappings are unchanged in this build.
+
+For the in-world button check, use the Gamepad layout and press/release each button separately
+after the character finishes spawning. Then hold/release each shoulder button and trigger and
+repeat the face-button checks. Test Start and Select, pause/resume, and another world load. Export
+logs if a held modifier remains active or an unrelated action occurs. Use Automatic right-stick
+axes for controllers that report Z/RZ; forcing RX/RY on such a device disables its right stick.
+
+`0.1.4-input-trace` investigates wrong in-world actions that remain after the transport fixes.
+The latest device trace shows correct evdev presses/releases, one active reader and no queue
+overflow; it does not prove that Unity or Valheim interprets each button correctly. The launcher
+now supplies the exact SDL mapping for our USB Xbox GUID, including all 11 buttons, the hat and
+six axes. It retains the compact USB layout; adding unused Bluetooth button slots would shift it.
+
+Debug APKs with native Mono also observe Unity's existing `NativeInputSystem` callbacks. Bounded
+`[VD-INPUT]` lines in `box64.log` record gamepad descriptors, event times, and Unity `GPAD` button
+states. Other formats are labeled raw, not guessed. The observer does not rewrite events, install
+game callbacks, inject inputs, or change Valheim bindings. Keyboard/text events are excluded.
+It logs up to 512 button/trigger changes per device; stick-only motion does not spend that budget.
+The instance environment override `VALDROID_INPUT_TRACE=0` disables this diagnostic.
+
+For this test, keep the same controller profile. After the character finishes spawning, tap
+**A, B, X, Y, LB, RB, Start, Select** individually, leaving a second between buttons, then
+export logs. Include one expected/actual action example if possible. This is a diagnostic build,
+not confirmation that the remaining in-world fault is fixed.
+
+Host checks: `app/src/test/native/valdroid_pad_test.c` covers evdev transport,
+`unity_input_trace_test.c` covers Unity buffer parsing and read-only behavior, and
+`python3 app/src/test/native/sdl_gamepad_contract_test.py` checks the advertised native capabilities
+and launcher mapping against real SDL2 virtual joysticks (requires a C compiler and libSDL2 2.0.14+).
+These checks do not substitute for testing Valheim on the device.
+
+`0.1.5-single-controller` addresses the duplicate devices demonstrated by the 06:54 device log.
+Unity registered the mapped ValDroid pad as device 3 and two physical Xbox interfaces as devices
+4 and 5. Device 4 duplicated button presses with a different layout: X also reported Y, Y reported
+LB, LB reported Select, RB reported Start, and LT reported RT. The virtual pad reported the intended
+buttons. `SDL_JOYSTICK_DEVICE` adds a device; it does not stop SDL from discovering others.
+
+The guest ioctl boundary now rejects direct physical evdev/legacy-joystick controller probes by
+capabilities while preserving the virtual pad. This also covers controllers opened with openat or
+through a symlink, and both libc and direct ioctl syscalls. Keyboard, mouse and touch capabilities
+are not filtered. The launcher disables SDL's alternative HIDAPI controller backend. Android still
+reads physical controls and applies the saved profile; the game sees only the resulting virtual pad.
+The advanced environment override `VALDROID_VIRTUAL_GAMEPAD_ONLY=0` disables the evdev/js guard for
+comparison. `pad: blocked direct guest controller` lines identify filtered devices.
+
+The host regression `python3 app/src/test/native/sdl_device_filter_test.py` uses actual SDL2
+discovery with a virtual pad and two simulated physical interfaces, all sharing a VID/PID. It
+reproduces three visible gamepads without the fix and exactly the virtual path with it. This test
+and the SDL mapping test now run in CI alongside native isolation and transport checks.
+
+Device verification: keep the saved Gamepad profile, enter a world, test X/Y and LB/RB/Start/Select,
+then check a custom keyboard binding and a Disabled button. Export logs to confirm Unity reports
+only the mapped pad and that no direct-controller input escapes a remap or Disabled binding.
+
 ## Build
 
 - Android Studio (its bundled JBR), Android SDK and NDK

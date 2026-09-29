@@ -97,11 +97,9 @@ public class Keyboard {
     }
 
     public boolean onKeyEvent(KeyEvent event) {
-        // ValDroid: inline gamepad check (Winlator used its ExternalController helper);
-        // gamepads are handled by our own GamepadHandler, not the X keyboard.
-        android.view.InputDevice device = event.getDevice();
-        if (device != null && (device.getSources() & android.view.InputDevice.SOURCE_GAMEPAD)
-                == android.view.InputDevice.SOURCE_GAMEPAD) return false;
+        // Classify the event, not the whole device: combo devices can expose both a keyboard
+        // and a gamepad. Controller D-pad events belong exclusively to the configured mapper.
+        if (com.valdroid.input.GamepadHandler.isControllerKey(event)) return false;
 
         int action = event.getAction();
         if (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP) {
