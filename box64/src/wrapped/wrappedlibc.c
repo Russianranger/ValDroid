@@ -229,9 +229,13 @@ EXPORT int32_t my_ppoll(x64emu_t* emu, struct pollfd* fds, unsigned long nfds, v
     return ret;
 }
 
+extern __attribute__((weak)) int rd_pad_is_fd(int fd);
+extern __attribute__((weak)) ssize_t rd_pad_read(int fd, void* buf, size_t count);
+
 EXPORT ssize_t my_read(x64emu_t* emu, int fd, void* buf, size_t count)
 {
     (void)emu;
+    if(rd_pad_read && rd_pad_is_fd && rd_pad_is_fd(fd)) return rd_pad_read(fd, buf, count);
     int watch = rd_x11_trace_enabled() && rd_x11_is_fd(fd);
     ssize_t ret = read(fd, buf, count);
     int saved = errno;

@@ -122,13 +122,26 @@ gamepad starting layout, trigger travel, and diagonal D-pad input. While holding
 background the app or disconnect the controller: its held output should release. If two buttons
 share an output, releasing one should keep it held until the other is released.
 
-The `0.1.2-controller-test` build also routes controller motion before Android's focused-view
+The controller builds also route controller motion before Android's focused-view
 handlers and suppresses stick jitter inside the device deadzone (at least 15%). For a double-input
 report, launch the game, test the affected controls immediately, then export logs. `ValDroid/Input`
-in `logcat.txt` records the saved profile, device ranges, selected stick/trigger axes, up to 200
-key/motion samples per resume, and output counts on pause. Motion samples are limited to one every
+in `logcat.txt` records the saved profile, device ranges, selected stick/trigger axes, up to 512
+button edges and 64 motion samples per resume, and output counts on pause. Motion samples are limited to one every
 300 ms. These diagnostics distinguish controller mappings from a separate mouse/keyboard stream;
 ordinary physical mouse/keyboard support remains enabled.
+
+`0.1.3-button-test` fixes the native virtual-gamepad transport used after Java mapping. Each
+guest open gets its own event queue; a short read cannot discard other button edges; held-button
+queries return the actual state; and an overflowing queue resynchronizes to current buttons and
+axes after a loading stall. Reopening the device starts from current state rather than old taps.
+The `pad:` lines in `rimdroid.log` identify reader opens, delivered button edges, state queries and
+overflow recovery. Stick mappings are unchanged in this build.
+
+For the in-world button check, use the Gamepad layout and press/release each button separately
+after the character finishes spawning. Then hold/release each shoulder button and trigger and
+repeat the face-button checks. Test Start and Select, pause/resume, and another world load. Export
+logs if a held modifier remains active or an unrelated action occurs. Use Automatic right-stick
+axes for controllers that report Z/RZ; forcing RX/RY on such a device disables its right stick.
 
 ## Build
 

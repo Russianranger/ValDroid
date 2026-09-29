@@ -16,7 +16,7 @@ public class GamepadHandler {
     private static final String TAG = "ValDroid/Input";
     private final SparseArray<DeviceAxes> deviceAxes = new SparseArray<>();
     private GamepadProfile profile;
-    private int traceLines, keyEdges, padButtons, padAxes, mouseFrames;
+    private int keyTraceLines, motionTraceLines, keyEdges, padButtons, padAxes, mouseFrames;
     private long nextMotionTrace;
 
     private final Activity activity;
@@ -62,7 +62,7 @@ public class GamepadHandler {
         profile = GamepadProfileStore.load(activity);
         deviceAxes.clear();
         VirtualGamepad.setPhysicalControllerConnected(hasConnectedGamepad());
-        traceLines = keyEdges = padButtons = padAxes = mouseFrames = 0;
+        keyTraceLines = motionTraceLines = keyEdges = padButtons = padAxes = mouseFrames = 0;
         nextMotionTrace = 0;
         Log.i(TAG, "controller router v2: touch gamepad blocked while physical connected; profile="
                 + profile.serialize().replace('\n', ';'));
@@ -106,8 +106,8 @@ public class GamepadHandler {
         if (input != null) {
             boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
             router.key(event.getDeviceId(), event.getKeyCode(), input, down);
-            if (traceLines < 200) {
-                traceLines++;
+            if (keyTraceLines < 512) {
+                keyTraceLines++;
                 Log.i(TAG, "key device=" + event.getDeviceId() + " source=" + event.getSource()
                         + " code=" + event.getKeyCode() + " down=" + down + " row=" + input
                         + " output=" + profile.get(input).name());
@@ -135,9 +135,9 @@ public class GamepadHandler {
         router.motion(event.getDeviceId(), lx, ly, rx, ry, lt, rt, hx, hy,
                 axes.leftTrigger != GamepadAxes.NONE, axes.rightTrigger != GamepadAxes.NONE);
         long now = SystemClock.uptimeMillis();
-        if (traceLines < 200 && now >= nextMotionTrace) {
+        if (motionTraceLines < 64 && now >= nextMotionTrace) {
             nextMotionTrace = now + 300;
-            traceLines++;
+            motionTraceLines++;
             Log.i(TAG, "motion device=" + event.getDeviceId() + " source=" + event.getSource()
                     + " raw[x,y,z,rz,rx,ry,lt,rt]=" + device.value(MotionEvent.AXIS_X) + ","
                     + device.value(MotionEvent.AXIS_Y) + "," + device.value(MotionEvent.AXIS_Z) + ","
