@@ -143,6 +143,30 @@ repeat the face-button checks. Test Start and Select, pause/resume, and another 
 logs if a held modifier remains active or an unrelated action occurs. Use Automatic right-stick
 axes for controllers that report Z/RZ; forcing RX/RY on such a device disables its right stick.
 
+`0.1.4-input-trace` investigates wrong in-world actions that remain after the transport fixes.
+The latest device trace shows correct evdev presses/releases, one active reader and no queue
+overflow; it does not prove that Unity or Valheim interprets each button correctly. The launcher
+now supplies the exact SDL mapping for our USB Xbox GUID, including all 11 buttons, the hat and
+six axes. It retains the compact USB layout; adding unused Bluetooth button slots would shift it.
+
+Debug APKs with native Mono also observe Unity's existing `NativeInputSystem` callbacks. Bounded
+`[VD-INPUT]` lines in `box64.log` record gamepad descriptors, event times, and Unity `GPAD` button
+states. Other formats are labeled raw, not guessed. The observer does not rewrite events, install
+game callbacks, inject inputs, or change Valheim bindings. Keyboard/text events are excluded.
+It logs up to 512 button/trigger changes per device; stick-only motion does not spend that budget.
+The instance environment override `VALDROID_INPUT_TRACE=0` disables this diagnostic.
+
+For this test, keep the same controller profile. After the character finishes spawning, tap
+**A, B, X, Y, LB, RB, Start, Select** individually, leaving a second between buttons, then
+export logs. Include one expected/actual action example if possible. This is a diagnostic build,
+not confirmation that the remaining in-world fault is fixed.
+
+Host checks: `app/src/test/native/valdroid_pad_test.c` covers evdev transport,
+`unity_input_trace_test.c` covers Unity buffer parsing and read-only behavior, and
+`python3 app/src/test/native/sdl_gamepad_contract_test.py` checks the advertised native capabilities
+and launcher mapping against real SDL2 virtual joysticks (requires a C compiler and libSDL2 2.0.14+).
+These checks do not substitute for testing Valheim on the device.
+
 ## Build
 
 - Android Studio (its bundled JBR), Android SDK and NDK

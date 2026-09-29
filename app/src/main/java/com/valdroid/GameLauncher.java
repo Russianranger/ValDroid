@@ -823,6 +823,10 @@ public class GameLauncher {
             Os.setenv("BOX64_LOG", "1", true);
             Os.setenv("BOX64_DYNAREC_LOG", "0", true);
         }
+        // Bounded, read-only tracing of Unity's gamepad events at the native Mono boundary.
+        // Before custom env vars so VALDROID_INPUT_TRACE=0 can disable it for an A/B test.
+        Os.setenv("VALDROID_INPUT_TRACE", BuildConfig.DEBUG ? "1" : "0", true);
+        Os.setenv("SDL_GAMECONTROLLERCONFIG", com.valdroid.input.VirtualGamepad.SDL_MAPPING, true);
 
         // Native ARM64 Mono (experimental per-instance switch, 1.6 only). Set OR unset every launch:
         // setenv persists in this process, so a stale path must not leak into the next instance. It
@@ -1005,6 +1009,9 @@ public class GameLauncher {
             // Virtual evdev gamepad: SDL opens this path (box64 routes it to valdroid_pad.c) and
             // reports an Xbox 360 pad, so the game runs with its own controller UI and bindings.
             Os.setenv("SDL_JOYSTICK_DEVICE", com.valdroid.input.VirtualGamepad.DEVICE_PATH, true);
+            postLog("Virtual controller SDL mapping: " + Os.getenv("SDL_GAMECONTROLLERCONFIG"));
+            postLog("Unity input trace: " + Os.getenv("VALDROID_INPUT_TRACE")
+                    + " (requires native Mono; [VD-INPUT] in box64.log)");
             // Force SDL to use our root visual by id (bypasses XMatchVisualInfo, which was failing to
             // match our depth-32 TrueColor visual → SDL added 0 displays → Unity crashed). See
             // memory rimworld_16_port.

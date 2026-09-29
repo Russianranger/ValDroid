@@ -9,6 +9,16 @@ package com.valdroid.input;
 public final class VirtualGamepad {
     public static final String DEVICE_PATH = "/dev/input/event-valdroid";
 
+    // SDL numbers only advertised evdev buttons, in ascending code order. This is the compact
+    // USB xpad layout (11 buttons), not the sparse Bluetooth layout (15 slots). Pin our own GUID
+    // so the Unity-bundled SDL database cannot silently select a different controller layout.
+    public static final String SDL_MAPPING =
+            "030000005e0400008e02000014010000,ValDroid Xbox 360,"
+            + "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+            + "back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+            + "leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,"
+            + "dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,";
+
     // linux/input-event-codes.h
     public static final int BTN_A = 0x130, BTN_B = 0x131, BTN_X = 0x133, BTN_Y = 0x134;
     public static final int BTN_TL = 0x136, BTN_TR = 0x137;

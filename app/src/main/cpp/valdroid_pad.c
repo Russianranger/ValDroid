@@ -9,7 +9,8 @@
 // physical controller or the on-screen overlay.
 //
 // The device identifies as a Microsoft X-Box 360 pad (bus USB, 045e:028e), which SDL's built-in
-// controller database maps to a full SDL_GameController without any extra configuration.
+// controller mapping is pinned by VirtualGamepad.SDL_MAPPING. Keep its GUID and button/axis
+// ordinals in sync with the EVIOCGID and EVIOCGBIT responses below.
 //
 // Layout of the guest side (x86_64 Linux): struct input_event = { timeval(16) u16 type u16 code
 // s32 value } = 24 bytes. Each open has an independent queue (dup shares its open's queue).
