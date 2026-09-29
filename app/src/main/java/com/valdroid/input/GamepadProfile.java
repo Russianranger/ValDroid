@@ -29,9 +29,16 @@ public final class GamepadProfile {
         @Override public String toString() { return label; }
     }
 
+    public enum RightStickAxes {
+        AUTO("Automatic"), Z_RZ("Z / RZ"), RX_RY("RX / RY");
+        public final String label;
+        RightStickAxes(String label) { this.label = label; }
+    }
+
     private final EnumMap<Input, Binding> bindings = new EnumMap<>(Input.class);
     public StickMode leftStick = StickMode.GAMEPAD_LEFT;
     public StickMode rightStick = StickMode.GAMEPAD_RIGHT;
+    public RightStickAxes rightStickAxes = RightStickAxes.AUTO;
 
     private GamepadProfile() {
         for (Input input : Input.values()) bindings.put(input, Binding.NONE);
@@ -51,6 +58,7 @@ public final class GamepadProfile {
         copy.bindings.putAll(bindings);
         copy.leftStick = leftStick;
         copy.rightStick = rightStick;
+        copy.rightStickAxes = rightStickAxes;
         return copy;
     }
 
@@ -123,6 +131,7 @@ public final class GamepadProfile {
         StringBuilder result = new StringBuilder("version=1\n");
         result.append("left=").append(leftStick.name()).append('\n');
         result.append("right=").append(rightStick.name()).append('\n');
+        result.append("rightAxes=").append(rightStickAxes.name()).append('\n');
         for (Input input : Input.values()) {
             result.append(input.name()).append('=').append(get(input).name()).append('\n');
         }
@@ -141,6 +150,7 @@ public final class GamepadProfile {
             try {
                 if ("left".equals(name)) result.leftStick = StickMode.valueOf(value);
                 else if ("right".equals(name)) result.rightStick = StickMode.valueOf(value);
+                else if ("rightAxes".equals(name)) result.rightStickAxes = RightStickAxes.valueOf(value);
                 else if (!"version".equals(name)) result.set(Input.valueOf(name), Binding.valueOf(value));
             } catch (IllegalArgumentException ignored) {
                 // A renamed/removed output must not acquire a different action after an update.

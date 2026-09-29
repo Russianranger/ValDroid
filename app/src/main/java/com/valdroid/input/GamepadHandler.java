@@ -1,6 +1,9 @@
 package com.valdroid.input;
 
 import android.app.Activity;
+import android.os.SystemClock;
+import android.util.Log;
+import android.util.SparseArray;
 import android.view.Choreographer;
 import android.view.InputDevice;
 import android.view.KeyEvent;
@@ -10,12 +13,11 @@ import com.valdroid.controls.InputControlsView;
 
 /** Android input adapter for the configurable physical-controller profile. */
 public class GamepadHandler {
-    private static final int[] LEFT_TRIGGER_AXES = {
-            MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_BRAKE,
-            MotionEvent.AXIS_GENERIC_1, MotionEvent.AXIS_GENERIC_3 };
-    private static final int[] RIGHT_TRIGGER_AXES = {
-            MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS,
-            MotionEvent.AXIS_GENERIC_2, MotionEvent.AXIS_GENERIC_4 };
+    private static final String TAG = "ValDroid/Input";
+    private final SparseArray<DeviceAxes> deviceAxes = new SparseArray<>();
+    private GamepadProfile profile;
+    private int traceLines, keyEdges, padButtons, padAxes, mouseFrames;
+    private long nextMotionTrace;
 
     private final Activity activity;
     private final InputControlsView controls;
@@ -29,21 +31,25 @@ public class GamepadHandler {
         this.controls = controls;
         this.sink = new GamepadRouter.Sink() {
             @Override public void inject(Binding binding, boolean down) {
+                keyEdges++;
                 controls.inject(binding, down);
             }
             @Override public void moveCursor(float dx, float dy) {
+                mouseFrames++;
                 controls.moveCursorBy(dx, dy);
             }
             @Override public void gamepadButton(int code, boolean down) {
-                try { VirtualGamepad.button(code, down); }
+                padButtons++;
+                try { VirtualGamepad.physicalButton(code, down); }
                 catch (UnsatisfiedLinkError ignored) { }
             }
             @Override public void gamepadAxis(int code, int value) {
-                try { VirtualGamepad.axis(code, value); }
+                padAxes++;
+                try { VirtualGamepad.physicalAxis(code, value); }
                 catch (UnsatisfiedLinkError ignored) { }
             }
             @Override public void syncGamepad() {
-                try { VirtualGamepad.sync(); }
+                try { VirtualGamepad.syncPhysical(); }
                 catch (UnsatisfiedLinkError ignored) { }
             }
         };
@@ -53,7 +59,13 @@ public class GamepadHandler {
     public void start() {
         if (running) return;
         GamepadMapping.load(activity);
-        GamepadProfile profile = GamepadProfileStore.load(activity);
+        profile = GamepadProfileStore.load(activity);
+        deviceAxes.clear();
+        VirtualGamepad.setPhysicalControllerConnected(hasConnectedGamepad());
+        traceLines = keyEdges = padButtons = padAxes = mouseFrames = 0;
+        nextMotionTrace = 0;
+        Log.i(TAG, "controller router v2: touch gamepad blocked while physical connected; profile="
+                + profile.serialize().replace('\n', ';'));
         controls.setControllerMouse(profile.usesMouse());
         router = new GamepadRouter(profile, sink);
         running = true;
@@ -63,15 +75,20 @@ public class GamepadHandler {
 
     /** Release keys, buttons and axes on pause, loss of focus, or profile replacement. */
     public void stop() {
+        boolean wasRunning = running;
         running = false;
         Choreographer.getInstance().removeFrameCallback(frameCallback);
         if (router != null) router.releaseAll();
+        deviceAxes.clear();
+        if (wasRunning) Log.i(TAG, "released controller outputs: gamepadButtons=" + padButtons
+                + " axes=" + padAxes + " mouseKeyboardEdges=" + keyEdges + " mouseFrames=" + mouseFrames);
         lastFrameNs = 0;
     }
 
     /** Release only the removed controller; another controller may own the same output. */
     public void onDeviceRemoved(int deviceId) {
         if (router != null) router.removeDevice(deviceId);
+        deviceAxes.remove(deviceId);
     }
 
     public boolean onKey(KeyEvent event) {
@@ -80,33 +97,96 @@ public class GamepadHandler {
         if (!running || event.getRepeatCount() > 0) return true;
         if (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP)
             return true;
+        VirtualGamepad.setPhysicalControllerConnected(true);
         GamepadProfile.Input input = inputForKey(event.getKeyCode());
+        DeviceAxes axes = axesFor(event.getDeviceId(), event.getDevice());
         if (input == GamepadProfile.Input.LT || input == GamepadProfile.Input.RT)
-            router.triggerCapabilities(event.getDeviceId(),
-                    hasAnyAxis(event.getDevice(), event.getSource(), LEFT_TRIGGER_AXES),
-                    hasAnyAxis(event.getDevice(), event.getSource(), RIGHT_TRIGGER_AXES));
-        if (input != null)
-            router.key(event.getDeviceId(), event.getKeyCode(), input,
-                    event.getAction() == KeyEvent.ACTION_DOWN);
+            router.triggerCapabilities(event.getDeviceId(), axes.selection.leftTrigger != GamepadAxes.NONE,
+                    axes.selection.rightTrigger != GamepadAxes.NONE);
+        if (input != null) {
+            boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+            router.key(event.getDeviceId(), event.getKeyCode(), input, down);
+            if (traceLines < 200) {
+                traceLines++;
+                Log.i(TAG, "key device=" + event.getDeviceId() + " source=" + event.getSource()
+                        + " code=" + event.getKeyCode() + " down=" + down + " row=" + input
+                        + " output=" + profile.get(input).name());
+            }
+        }
         return true;
     }
 
     public boolean onMotion(MotionEvent event) {
-        if (!isFromGamepad(event.getSource()) || event.getAction() != MotionEvent.ACTION_MOVE)
-            return false;
+        if (!isFromGamepad(event.getSource())) return false;
         if (!running) return true;
-        int rightX = MotionEvent.AXIS_Z, rightY = MotionEvent.AXIS_RZ;
-        if (!hasAxis(event, rightX) && hasAxis(event, MotionEvent.AXIS_RX)) {
-            rightX = MotionEvent.AXIS_RX;
-            rightY = MotionEvent.AXIS_RY;
+        if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            onDeviceRemoved(event.getDeviceId());
+            return true;
         }
-        router.motion(event.getDeviceId(),
-                event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y),
-                event.getAxisValue(rightX), event.getAxisValue(rightY),
-                readTrigger(event, LEFT_TRIGGER_AXES), readTrigger(event, RIGHT_TRIGGER_AXES),
-                event.getAxisValue(MotionEvent.AXIS_HAT_X), event.getAxisValue(MotionEvent.AXIS_HAT_Y),
-                hasAnyAxis(event, LEFT_TRIGGER_AXES), hasAnyAxis(event, RIGHT_TRIGGER_AXES));
+        if (event.getActionMasked() != MotionEvent.ACTION_MOVE) return true;
+        VirtualGamepad.setPhysicalControllerConnected(true);
+        DeviceAxes device = axesFor(event.getDeviceId(), event.getDevice());
+        device.event = event;
+        GamepadAxes axes = device.selection;
+        float lx = axes.stick(MotionEvent.AXIS_X), ly = axes.stick(MotionEvent.AXIS_Y);
+        float rx = axes.stick(axes.rightX), ry = axes.stick(axes.rightY);
+        float lt = axes.trigger(axes.leftTrigger), rt = axes.trigger(axes.rightTrigger);
+        float hx = axes.hat(MotionEvent.AXIS_HAT_X), hy = axes.hat(MotionEvent.AXIS_HAT_Y);
+        router.motion(event.getDeviceId(), lx, ly, rx, ry, lt, rt, hx, hy,
+                axes.leftTrigger != GamepadAxes.NONE, axes.rightTrigger != GamepadAxes.NONE);
+        long now = SystemClock.uptimeMillis();
+        if (traceLines < 200 && now >= nextMotionTrace) {
+            nextMotionTrace = now + 300;
+            traceLines++;
+            Log.i(TAG, "motion device=" + event.getDeviceId() + " source=" + event.getSource()
+                    + " raw[x,y,z,rz,rx,ry,lt,rt]=" + device.value(MotionEvent.AXIS_X) + ","
+                    + device.value(MotionEvent.AXIS_Y) + "," + device.value(MotionEvent.AXIS_Z) + ","
+                    + device.value(MotionEvent.AXIS_RZ) + "," + device.value(MotionEvent.AXIS_RX) + ","
+                    + device.value(MotionEvent.AXIS_RY) + "," + device.value(MotionEvent.AXIS_LTRIGGER) + ","
+                    + device.value(MotionEvent.AXIS_RTRIGGER) + " selected[lx,ly,rx,ry,lt,rt,hatx,haty]="
+                    + lx + "," + ly + "," + rx + "," + ry + "," + lt + "," + rt + "," + hx + "," + hy);
+        }
+        device.event = null; // MotionEvents are pooled; retain only the device's range metadata.
         return true;
+    }
+
+    private DeviceAxes axesFor(int id, InputDevice input) {
+        DeviceAxes result = deviceAxes.get(id);
+        if (result == null) {
+            result = new DeviceAxes(input);
+            deviceAxes.put(id, result);
+            Log.i(TAG, "device=" + id + " name=" + (input == null ? "unknown" : input.getName())
+                    + " rightAxes=" + result.selection.rightX + "/" + result.selection.rightY
+                    + " triggerAxes=" + result.selection.leftTrigger + "/" + result.selection.rightTrigger
+                    + " ranges=" + result.description);
+        }
+        return result;
+    }
+
+    private final class DeviceAxes implements GamepadAxes.Source {
+        final GamepadAxes.Range[] ranges = new GamepadAxes.Range[64];
+        final GamepadAxes selection;
+        final String description;
+        MotionEvent event;
+        DeviceAxes(InputDevice device) {
+            StringBuilder summary = new StringBuilder();
+            if (device != null) for (InputDevice.MotionRange range : device.getMotionRanges()) {
+                int axis = range.getAxis();
+                if (axis < 0 || axis >= ranges.length) continue;
+                // Use joystick ranges on composite mouse/gamepad devices.
+                InputDevice.MotionRange joystick = device.getMotionRange(axis, InputDevice.SOURCE_JOYSTICK);
+                if (joystick != null) range = joystick;
+                ranges[axis] = new GamepadAxes.Range(range.getMin(), range.getMax(), range.getFlat());
+                summary.append(axis).append(':').append(range.getMin()).append("..").append(range.getMax())
+                        .append(" flat=").append(range.getFlat()).append(';');
+            }
+            description = summary.toString();
+            selection = new GamepadAxes(this, profile.rightStickAxes);
+        }
+        public GamepadAxes.Range range(int axis) {
+            return axis >= 0 && axis < ranges.length ? ranges[axis] : null;
+        }
+        public float value(int axis) { return event == null || axis < 0 ? 0 : event.getAxisValue(axis); }
     }
 
     /** Mixed keyboard/controller devices retain their ordinary keyboard key behavior. */
@@ -150,40 +230,6 @@ public class GamepadHandler {
         }
     }
 
-    private static boolean hasAxis(MotionEvent event, int axis) {
-        return hasAxis(event.getDevice(), event.getSource(), axis);
-    }
-
-    private static boolean hasAxis(InputDevice device, int source, int axis) {
-        return device != null && (device.getMotionRange(axis, source) != null
-                || device.getMotionRange(axis) != null);
-    }
-
-    private static boolean hasAnyAxis(MotionEvent event, int[] axes) {
-        return hasAnyAxis(event.getDevice(), event.getSource(), axes);
-    }
-
-    private static boolean hasAnyAxis(InputDevice device, int source, int[] axes) {
-        for (int axis : axes) if (hasAxis(device, source, axis)) return true;
-        return false;
-    }
-
-    private static float readTrigger(MotionEvent event, int[] axes) {
-        InputDevice device = event.getDevice();
-        float value = 0;
-        for (int axis : axes) {
-            InputDevice.MotionRange range = device == null ? null
-                    : device.getMotionRange(axis, event.getSource());
-            if (range == null && device != null) range = device.getMotionRange(axis);
-            if (device != null && range == null) continue;
-            float sample = event.getAxisValue(axis);
-            if (range != null && range.getMin() < 0 && range.getRange() > 0)
-                sample = (sample - range.getMin()) / range.getRange();
-            value = Math.max(value, Math.max(0, Math.min(1, sample)));
-        }
-        return value;
-    }
-
     private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
         @Override public void doFrame(long frameTimeNanos) {
             if (!running) return;
@@ -207,10 +253,9 @@ public class GamepadHandler {
                 InputDevice device = InputDevice.getDevice(id);
                 if (device == null || device.isVirtual()) continue;
                 int sources = device.getSources();
-                boolean gamepad = (sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
-                        || (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
-                if (gamepad && device.getMotionRanges() != null
-                        && !device.getMotionRanges().isEmpty()) return true;
+                if ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD) return true;
+                if ((sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+                        && device.getMotionRanges() != null && !device.getMotionRanges().isEmpty()) return true;
             } catch (Throwable ignored) { }
         }
         return false;

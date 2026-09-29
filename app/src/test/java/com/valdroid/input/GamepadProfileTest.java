@@ -30,6 +30,7 @@ public class GamepadProfileTest {
         profile.set(GamepadProfile.Input.LS_UP, Binding.MOUSE_MOVE_LEFT);
         profile.leftStick = GamepadProfile.StickMode.DIRECTIONS;
         profile.rightStick = GamepadProfile.StickMode.DISABLED;
+        profile.rightStickAxes = GamepadProfile.RightStickAxes.RX_RY;
         GamepadProfile restored = GamepadProfile.parse(profile.serialize());
         assertEquals(profile.serialize(), restored.serialize());
     }
@@ -41,6 +42,16 @@ public class GamepadProfileTest {
         draft.leftStick = GamepadProfile.StickMode.MOUSE;
         assertEquals(Binding.GAMEPAD_BUTTON_A, original.get(GamepadProfile.Input.A));
         assertEquals(GamepadProfile.StickMode.GAMEPAD_LEFT, original.leftStick);
+    }
+
+    @Test public void axisPreferenceCopiesAndOldProfilesKeepAutomaticDetection() {
+        GamepadProfile profile = GamepadProfile.gamepadDefaults();
+        profile.rightStickAxes = GamepadProfile.RightStickAxes.RX_RY;
+        assertEquals(GamepadProfile.RightStickAxes.RX_RY, profile.copy().rightStickAxes);
+        String old = profile.serialize().replace("rightAxes=RX_RY\n", "");
+        assertEquals(GamepadProfile.RightStickAxes.AUTO, GamepadProfile.parse(old).rightStickAxes);
+        assertEquals(GamepadProfile.RightStickAxes.AUTO,
+                GamepadProfile.parse(old + "rightAxes=unknown\n").rightStickAxes);
     }
 
     @Test public void damagedRecognizedProfileDoesNotRestorePassthroughOnMissingOutputs() {

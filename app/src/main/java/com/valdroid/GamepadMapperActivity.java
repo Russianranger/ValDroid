@@ -152,6 +152,19 @@ public class GamepadMapperActivity extends AppCompatActivity {
         stickRow(true);
         heading(R.string.gm_right_stick);
         stickRow(false);
+        text(getString(R.string.gm_axes_hint), false);
+        button(getString(R.string.gm_binding_row, getString(R.string.gm_axes_title),
+                draft.rightStickAxes.label), v -> {
+            GamepadProfile.RightStickAxes[] options = GamepadProfile.RightStickAxes.values();
+            String[] labels = new String[options.length];
+            for (int i = 0; i < options.length; i++) labels[i] = options[i].label;
+            new MaterialAlertDialogBuilder(this).setTitle(R.string.gm_axes_title)
+                    .setSingleChoiceItems(labels, draft.rightStickAxes.ordinal(), (dialog, which) -> {
+                        draft.rightStickAxes = options[which];
+                        dialog.dismiss();
+                        render();
+                    }).setNegativeButton(android.R.string.cancel, null).show();
+        });
         showSharedOutputs();
         showCalibration();
         saveItem.setEnabled(!mappingActive);

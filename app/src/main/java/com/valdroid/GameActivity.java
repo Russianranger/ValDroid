@@ -34,11 +34,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     public static native long nativeGetFrameCount();
     public static native void nativeSetFpsCap(int fps);   // 0 = uncapped, else cap presents to fps
 
-    // Input wrappers: the native path feeds synthetic SDL events (RimWorld 1.5's SDL video
-    // driver). Under the 1.6 X11 path Unity's SDL takes input from CORE X EVENTS instead, so
-    // taps produced zero ButtonPress on the wire and nothing was clickable at the menu. Mirror
-    // every pointer action into the in-process X server whenever one is running (1.6 sessions
-    // only — getXServer() is null for 1.5, making the mirror a no-op there).
+    // Compatibility input wrappers select one backend. Valheim reads X events; the native SDL
+    // queue is a fallback for sessions without X. Never enqueue the same action in both.
     private static com.valdroid.xserver.Pointer.Button xBtn(int button) {
         switch (button) {
             case 2:  return com.valdroid.xserver.Pointer.Button.BUTTON_MIDDLE;
@@ -47,17 +44,21 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
     public static void touchInput(int action, int x, int y) {
-        try { nativeTouch(action, x, y); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeTouch(action, x, y); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         xs.injectPointerMove(x, y);
         if (action == 1) xs.injectPointerButtonPress(com.valdroid.xserver.Pointer.Button.BUTTON_LEFT);
         else if (action == 2) xs.injectPointerButtonRelease(com.valdroid.xserver.Pointer.Button.BUTTON_LEFT);
     }
     public static void buttonInput(int button, int down, int x, int y) {
-        try { nativeButton(button, down, x, y); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeButton(button, down, x, y); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         xs.injectPointerMove(x, y);
         if (down != 0) xs.injectPointerButtonPress(xBtn(button));
         else xs.injectPointerButtonRelease(xBtn(button));
@@ -242,9 +243,11 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     public static void scrollInput(int x, int y, int dy) {
-        try { nativeScroll(x, y, dy); } catch (UnsatisfiedLinkError ignored) {}
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
-        if (xs == null) return;
+        if (xs == null) {
+            try { nativeScroll(x, y, dy); } catch (UnsatisfiedLinkError ignored) {}
+            return;
+        }
         xs.injectPointerMove(x, y);
         com.valdroid.xserver.Pointer.Button b = dy > 0
                 ? com.valdroid.xserver.Pointer.Button.BUTTON_SCROLL_UP
@@ -529,10 +532,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         }
         setContentView(root);
         hideSystemBars();   // after setContentView — the decor view / insets controller now exist
-        // CRITICAL for gamepad: analog joystick MotionEvents (sticks/triggers) are delivered only to
-        // a focused View, then bubble to Activity.onGenericMotionEvent. Without a focusable+focused
-        // view, Android silently drops them (buttons still arrive via dispatchKeyEvent, but sticks
-        // don't). So make the game surface focusable and grab focus (re-grabbed in onResume).
+        // Keep the game surface focused for input and captured mouse motion. Controller motion is
+        // intercepted by dispatchGenericMotionEvent before Android can synthesize navigation keys.
         surfaceView.setFocusable(true);
         surfaceView.setOnCapturedPointerListener((v, ev) -> onCapturedMouse(ev));
         surfaceView.setFocusableInTouchMode(true);
@@ -856,6 +857,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
      *  Acts only on a connect/disconnect TRANSITION, so it never clobbers the manual hide toggle. */
     private void refreshGamepadControls() {
         boolean pad = isGamepadConnected();
+        com.valdroid.input.VirtualGamepad.setPhysicalControllerConnected(pad);
         if (pad == lastPadConnected) return;
         lastPadConnected = pad;
         if (controls != null) controls.setGamepadConnected(pad);
@@ -873,9 +875,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         // Controller buttons and D-pad must precede the keyboard: otherwise a remapped D-pad
         // becomes an arrow key as well. The handler leaves real keyboard keys on combo devices alone.
         if (gamepad != null && gamepad.onKey(event)) return true;
-        // 1.6/X11: ALSO mirror the key into the in-process X server (Unity's SDL x11 driver only sees
-        // core X KeyPress/KeyRelease; the SDL injection below is invisible to it — same as pointer).
-        // Winlator's Keyboard.onKeyEvent carries the full Android→XKeycode map and was never wired.
+        // Use the active backend: Unity's SDL x11 driver sees core X KeyPress/KeyRelease.
         com.valdroid.xserver.XServer xs = com.valdroid.xserver.XServerRunner.getXServer();
         if (xs != null) {
             // Back (the system back gesture / button, or a keyboard's Back key) is Esc in the game:
@@ -907,8 +907,14 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     @Override
-    public boolean onGenericMotionEvent(MotionEvent event) {
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        // Consume joystick reports before focused Views or Android's fallback key synthesis.
         if (gamepad != null && gamepad.onMotion(event)) return true;
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
         if (mouseKb != null && mouseKb.onGenericMotion(event)) return true;   // mouse move/wheel/buttons
         return super.onGenericMotionEvent(event);
     }

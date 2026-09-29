@@ -43,4 +43,6 @@
     <string name="gm_calibration_done">Button calibration added to the draft. Tap Save to apply it.</string>
     <string name="gm_calibration_finish_first">Finish or cancel button calibration before saving.</string>
     <string name="gm_output_none">Disabled</string>
+    <string name="gm_axes_title">Right-stick input axes</string>
+    <string name="gm_axes_hint">Automatic checks the axis ranges reported by your controller. If the right stick behaves like a trigger or does not move, try the other axis pair. Only one pair is read.</string>
 </resources>

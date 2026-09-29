@@ -23,25 +23,47 @@ public final class VirtualGamepad {
 
     private VirtualGamepad() {}
 
-    public static void button(int code, boolean down) { nativeButton(code, down); }
+    private static final GamepadOutputArbiter OUTPUT = new GamepadOutputArbiter(
+            new GamepadOutputArbiter.Sink() {
+                public void button(int code, boolean down) {
+                    try { nativeButton(code, down); } catch (UnsatisfiedLinkError ignored) { }
+                }
+                public void axis(int code, int value) {
+                    try { nativeAxis(code, value); } catch (UnsatisfiedLinkError ignored) { }
+                }
+                public void sync() {
+                    try { nativeSync(); } catch (UnsatisfiedLinkError ignored) { }
+                }
+            });
+
+    public static void setPhysicalControllerConnected(boolean connected) {
+        OUTPUT.setPhysicalConnected(connected);
+    }
+
+    // All existing InputSink/overlay calls belong to the touch source.
+    public static void button(int code, boolean down) { OUTPUT.button(false, code, down); }
 
     /** Raw evdev value in the axis's own range (see the constants above). */
-    public static void axis(int code, int value) { nativeAxis(code, value); }
+    public static void axis(int code, int value) { OUTPUT.axis(false, code, value); }
+
+    public static void physicalButton(int code, boolean down) { OUTPUT.button(true, code, down); }
+    public static void physicalAxis(int code, int value) { OUTPUT.axis(true, code, value); }
+    public static void syncPhysical() { OUTPUT.sync(true); }
 
     /** Stick axis from a -1..1 float. */
     public static void stick(int code, float v) {
         if (v > 1f) v = 1f; else if (v < -1f) v = -1f;
-        nativeAxis(code, Math.round(v * STICK_MAX));
+        axis(code, Math.round(v * STICK_MAX));
     }
 
     /** Trigger axis from a 0..1 float. */
     public static void trigger(int code, float v) {
         if (v > 1f) v = 1f; else if (v < 0f) v = 0f;
-        nativeAxis(code, Math.round(v * TRIGGER_MAX));
+        axis(code, Math.round(v * TRIGGER_MAX));
     }
 
     /** Flush pending changes as one SYN_REPORT-terminated packet. */
-    public static void sync() { nativeSync(); }
+    public static void sync() { OUTPUT.sync(false); }
 
     private static native void nativeButton(int code, boolean down);
     private static native void nativeAxis(int code, int value);

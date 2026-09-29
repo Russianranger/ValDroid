@@ -107,8 +107,13 @@ app-wide and are loaded when the game starts or resumes.
   available by explicitly choosing both kinds in the same layout.
 - Existing physical button calibration is retained. Use the calibration section only to correct
   swapped or unusual controller buttons; select actual game outputs in the rows above it.
-- Touchscreen layouts are still edited separately. The mouse/keyboard starting layout emits no
-  gamepad events from the physical controller; touching gamepad controls can still send them.
+- Touchscreen layouts are still edited separately. While a physical controller is connected it
+  exclusively owns the virtual gamepad; touch-gamepad writes are blocked, including hidden or
+  edited controls. Keyboard/mouse touch helpers remain available. Disconnecting the controller
+  restores touch-gamepad input and clears held virtual buttons and axes.
+- **Right stick axes** defaults to Automatic, which selects a complete centered Z/RZ or RX/RY
+  pair. If a controller advertises both but only one works, choose its pair explicitly and save.
+  Trigger aliases are read from one source per trigger; generic vendor axes are not guessed.
 
 For an on-device check, map **A → E**, **B → Disabled**, **D-pad up → 1**, left stick to custom
 **W/A/S/D**, and right stick to **Mouse cursor / look**. Save and relaunch. Check that A sends only E,
@@ -116,6 +121,14 @@ B does nothing, D-pad up sends only 1, and the sticks move and look as selected.
 gamepad starting layout, trigger travel, and diagonal D-pad input. While holding an input,
 background the app or disconnect the controller: its held output should release. If two buttons
 share an output, releasing one should keep it held until the other is released.
+
+The `0.1.2-controller-test` build also routes controller motion before Android's focused-view
+handlers and suppresses stick jitter inside the device deadzone (at least 15%). For a double-input
+report, launch the game, test the affected controls immediately, then export logs. `ValDroid/Input`
+in `logcat.txt` records the saved profile, device ranges, selected stick/trigger axes, up to 200
+key/motion samples per resume, and output counts on pause. Motion samples are limited to one every
+300 ms. These diagnostics distinguish controller mappings from a separate mouse/keyboard stream;
+ordinary physical mouse/keyboard support remains enabled.
 
 ## Build
 
